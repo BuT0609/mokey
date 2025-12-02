@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>孙悟空：网页交互 (Monkey King Web)</title>
+    <style>
+        /* CSS 样式：重置页面，设置全屏 */
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* 隐藏滚动条 */
+            background-color: #1a1a1a;
+            /* 如果你有背景图，请取消下面这行的注释（删除前面的 //） */
+            /* background: url('bg.jpg') no-repeat center center / cover; */
+            
+            /* 如果没有背景图，我们用 CSS 画一个史诗感的暗夜背景 */
+            background: linear-gradient(to bottom, #0f0c29, #302b63, #24243e);
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+
+        canvas {
+            display: block; /* 画布块级显示 */
+        }
+
+        /* 屏幕上方的操作提示 */
+        .ui-layer {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none; /* 让鼠标穿透文字 */
+            z-index: 10;
+        }
+
+        .title {
+            color: #ffd700; /* 金色 */
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 20px;
+            border-radius: 20px;
+            display: inline-block;
+        }
+
+        .key {
+            border: 1px solid rgba(255,255,255,0.5);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+            color: #fff;
+            margin: 0 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ui-layer">
+        <div class="title">齐天大圣 · 网页交互版</div>
+        <div class="controls">
+            左右移动鼠标 <span class="key">Mouse</span> · 按下 <span class="key">Space</span> 跳跃
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        /**
+         * 核心逻辑区
+         */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 1. 设置全屏画布
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // 更新地面位置 (屏幕底部向上 50px)
+            physics.floorY = canvas.height - 50; 
+        }
+        window.addEventListener('resize', resize);
+
+        // 2. 加载图片
+        const monkeyImg = new Image();
+        monkeyImg.src = 'wukong.png'; // 确保你的图片叫这个名字
+
+        // 3. 游戏参数配置
+        const monkey = {
+            x: 0, 
+            y: 0,
+            // 悟空显示的大小 (可以根据你的图片实际大小微调)
+            width: 200,   
+            height: 250,  
+            vx: 0,
+            vy: 0,
+            direction: 1, // 1 面向右, -1 面向左
+            isGrounded: false,
+            // 移动参数
+            speed: 0.08,    // 跟随鼠标的延迟感 (0.01-1.0)，越小越顺滑
+            jumpForce: -25  // 跳跃力度 (负数向上)
+        };
+
+        const physics = {
+            gravity: 0.9,  // 重力
+            friction: 0.9, // 空气阻力
+            floorY: 0      // 地面Y坐标 (在resize中初始化)
+        };
+
+        const mouse = {
+            x: window.innerWidth / 2,
+            y: window.innerHeight / 2
+        };
+
+        // 初始化位置
+        resize();
+        monkey.x = canvas.width / 2;
+        monkey.y = physics.floorY - monkey.height;
+
+        // 4. 事件监听
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                // 只有在地面上才能跳 (避免无限连跳)
+                if (monkey.isGrounded) {
+                    monkey.vy = monkey.jumpForce;
+                    monkey.isGrounded = false;
+                }
+            }
+        });
+
+        // 5. 核心循环 Loop
+        function update() {
+            // --- 水平移动逻辑 (Lerp平滑跟随) ---
+            // 目标X：鼠标位置减去身体一半宽度（为了让鼠标在身体中心）
+            let targetX = mouse.x - monkey.width / 2;
+            
+            // 计算当前位置与目标位置的距离
+            let dx = targetX - monkey.x;
+            
+            // 缓动跟随
+            monkey.x += dx * monkey.speed;
+
+            // --- 判断朝向 ---
+            // 如果鼠标在悟空右边，他应该面向右(1)；在左边则面向左(-1)
+            // 加一个小阈值(5px)防止抖动
+            if (dx > 5) monkey.direction = 1; 
+            else if (dx < -5) monkey.direction = -1;
+
+            // --- 垂直跳跃逻辑 (物理引擎) ---
+            monkey.vy += physics.gravity; // 施加重力
+            monkey.y += monkey.vy;        // 更新位置
+
+            // --- 地面碰撞检测 ---
+            if (monkey.y + monkey.height >= physics.floorY) {
+                monkey.y = physics.floorY - monkey.height; // 修正位置到地面之上
+                monkey.vy = 0; // 落地速度归零
+                monkey.isGrounded = true;
+            } else {
+                monkey.isGrounded = false;
+            }
+
+            // --- 边界检测 (防止跑出屏幕) ---
+            if (monkey.x < -monkey.width/2) monkey.x = -monkey.width/2;
+            if (monkey.x > canvas.width - monkey.width/2) monkey.x = canvas.width - monkey.width/2;
+        }
+
+        function draw() {
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制地面阴影 (为了更有立体感)
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.beginPath();
+            ctx.ellipse(monkey.x + monkey.width/2, physics.floorY, monkey.width/2, 10, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 绘制悟空
+            if (monkeyImg.complete) {
+                ctx.save(); // 保存当前画笔状态
+
+                // --- 翻转处理 ---
+                // 将原点移动到悟空的中心
+                let centerX = monkey.x + monkey.width / 2;
+                let centerY = monkey.y + monkey.height / 2;
+                ctx.translate(centerX, centerY);
+                
+                // 根据方向进行水平翻转
+                // 假设你的原图是“面向左”或“面向右”，这里默认假设原图是【面向正面或右侧】
+                // 如果你的原图是面向左的，就把 1 改成 -1
+                ctx.scale(monkey.direction, 1); 
+
+                // 绘制图片 (因为原点变到了中心，所以坐标要是 -width/2, -height/2)
+                ctx.drawImage(monkeyImg, -monkey.width / 2, -monkey.height / 2, monkey.width, monkey.height);
+                
+                ctx.restore(); // 恢复画笔状态
+            } else {
+                // 如果图片没加载出来，画个金色的方块代替，提示用户
+                ctx.fillStyle = 'gold';
+                ctx.fillRect(monkey.x, monkey.y, monkey.width, monkey.height);
+                ctx.fillStyle = 'black';
+                ctx.font = "20px Arial";
+                ctx.fillText("加载图片...", monkey.x + 10, monkey.y + 50);
+            }
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // 启动！
+        loop();
+
+    </script>
+</body>
+</html>
